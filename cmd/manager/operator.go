@@ -372,32 +372,39 @@ func RunOperator(cmd *cobra.Command, args []string) {
 		met.SetTLSProfileSpec(initialTLSProfile)
 	}
 
-	// Set up the SecurityProfileWatcher to detect APIServer TLS profile
-	// and adherence policy changes. On change, cancel the context so the
-	// manager shuts down gracefully and the pod restarts with the new
-	// TLS configuration applied.
-	watcher := &tlspkg.SecurityProfileWatcher{
-		Client:                    mgr.GetClient(),
-		InitialTLSProfileSpec:     initialTLSProfile,
-		InitialTLSAdherencePolicy: initialTLSAdherencePolicy,
-		OnProfileChange: func(_ context.Context, oldProfile, newProfile configv1.TLSProfileSpec) {
-			setupLog.Info("Cluster TLS profile changed, initiating graceful shutdown to reload",
-				"oldMinTLSVersion", oldProfile.MinTLSVersion,
-				"newMinTLSVersion", newProfile.MinTLSVersion,
-			)
-			cancel()
-		},
-		OnAdherencePolicyChange: func(_ context.Context, oldPolicy, newPolicy configv1.TLSAdherencePolicy) {
-			setupLog.Info("Cluster TLS adherence policy changed, initiating graceful shutdown to reload",
-				"oldPolicy", oldPolicy,
-				"newPolicy", newPolicy,
-			)
-			cancel()
-		},
-	}
-	if err := watcher.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Unable to set up TLS security profile watcher")
-		os.Exit(1)
+	// Set up the SecurityProfileWatcher only on OpenShift-family platforms.
+	// On plain Kubernetes (Generic, EKS, etc.) the OpenShift-only APIServer
+	// CRD does not exist and the informer cache crashes at startup.
+	earlyPlatformStr, _ := flags.GetString("platform")
+	earlyPlatform := getValidPlatform(earlyPlatformStr)
+	if earlyPlatform == PlatformOpenShift || earlyPlatform == PlatformOpenShiftOnPower ||
+		earlyPlatform == PlatformOpenShiftOnZ || earlyPlatform == PlatformHyperShift {
+		watcher := &tlspkg.SecurityProfileWatcher{
+			Client:                    mgr.GetClient(),
+			InitialTLSProfileSpec:     initialTLSProfile,
+			InitialTLSAdherencePolicy: initialTLSAdherencePolicy,
+			OnProfileChange: func(_ context.Context, oldProfile, newProfile configv1.TLSProfileSpec) {
+				setupLog.Info("Cluster TLS profile changed, initiating graceful shutdown to reload",
+					"oldMinTLSVersion", oldProfile.MinTLSVersion,
+					"newMinTLSVersion", newProfile.MinTLSVersion,
+				)
+				cancel()
+			},
+			OnAdherencePolicyChange: func(_ context.Context, oldPolicy, newPolicy configv1.TLSAdherencePolicy) {
+				setupLog.Info("Cluster TLS adherence policy changed, initiating graceful shutdown to reload",
+					"oldPolicy", oldPolicy,
+					"newPolicy", newPolicy,
+				)
+				cancel()
+			},
+		}
+		if err := watcher.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Unable to set up TLS security profile watcher")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Skipping TLS security profile watcher (not an OpenShift platform)",
+			"platform", string(earlyPlatform))
 	}
 
 	si, getSIErr := getSchedulingInfo(ctx, mgr.GetAPIReader())

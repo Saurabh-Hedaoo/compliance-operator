@@ -19,7 +19,7 @@ spec:
       serviceAccountName: compliance-operator
       containers:
         - name: compliance-operator
-          image: "ghcr.io/complianceascode/compliance-operator:latest"
+          image: {{ .Values.images.operator | quote }}
           command:
           - compliance-operator
           - operator
@@ -52,12 +52,11 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: RELATED_IMAGE_OPENSCAP
-              # Hardcoding this temporarily until its propagated to CI
-              value: "ghcr.io/complianceascode/openscap-ocp:latest"
+              value: {{ .Values.images.openscap | quote }}
             - name: RELATED_IMAGE_OPERATOR
-              value: "ghcr.io/complianceascode/compliance-operator:latest"
+              value: {{ .Values.images.operator | quote }}
             - name: RELATED_IMAGE_PROFILE
-              value: "ghcr.io/complianceascode/k8scontent:latest"
+              value: {{ .Values.images.profile | quote }}
           volumeMounts:
             - name: serving-cert
               mountPath: /var/run/secrets/serving-cert

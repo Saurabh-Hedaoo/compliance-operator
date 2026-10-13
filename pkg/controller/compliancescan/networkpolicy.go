@@ -3,6 +3,7 @@ package compliancescan
 import (
 	"context"
 	"reflect"
+	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -14,6 +15,7 @@ import (
 
 	compv1alpha1 "github.com/ComplianceAsCode/compliance-operator/pkg/apis/compliance/v1alpha1"
 	"github.com/ComplianceAsCode/compliance-operator/pkg/controller/common"
+	"github.com/ComplianceAsCode/compliance-operator/pkg/utils"
 )
 
 const (
@@ -132,6 +134,20 @@ func operandNetworkPolicies(ns string) []*networkingv1.NetworkPolicy {
 // the operator's RBAC grant, and is idempotent and safe to call on every
 // reconcile.
 func (r *ReconcileComplianceScan) reconcileNetworkPolicies(ctx context.Context, logger logr.Logger) error {
+	// NetworkPolicies use OVN-Kubernetes-specific host-network namespace labels
+	// and rely on pod-IP peer selection that breaks on Canal/Flannel (RKE2,
+	// EKS, generic k8s) because kube-proxy SNAT rewrites the source IP to the
+	// node IP on cross-node ClusterIP traffic, causing the default-deny to
+	// block scanner uploads to the result server. Skip on non-OpenShift CNIs.
+	platform := utils.GetPlatform()
+	if !strings.EqualFold(platform, "OpenShift") &&
+		!strings.EqualFold(platform, "HyperShift") &&
+		!strings.EqualFold(platform, "ROSA") &&
+		!strings.EqualFold(platform, "OpenShiftOnPower") &&
+		!strings.EqualFold(platform, "OpenShiftOnZ") {
+		logger.Info("Skipping NetworkPolicy reconciliation on non-OpenShift platform", "platform", platform)
+		return nil
+	}
 	ns := common.GetComplianceOperatorNamespace()
 	for _, desired := range operandNetworkPolicies(ns) {
 		if err := r.reconcileNetworkPolicy(ctx, desired, logger); err != nil {

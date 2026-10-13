@@ -11,6 +11,12 @@ namespace: openshift-compliance
 # 'openshift', 'eks', 'generic', and 'unknown'.
 platform: openshift
 
+# Images used by the operator and the pods it creates.
+images:
+  operator: "icr.io/sovcore-dev/compliance-operator:amd64-v8"
+  openscap: "ghcr.io/complianceascode/openscap-ocp:latest"
+  profile: "ghcr.io/complianceascode/k8scontent:latest"
+
 # By default, the compliance-operator will deploy to nodes tagged with the
 # master kubernetes role, which is present in OpenShift deployments. You may
 # need to omit this option to run the compliance-operator on other platforms,
